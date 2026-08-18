@@ -489,7 +489,7 @@ select{width:100%;background:var(--night);border:1px solid var(--line);color:var
   <div class="card todo" id="cardSensor">
     <div class="stephead"><span class="num" id="numSensor">2</span><span class="steptitle">Your indoor sensor</span></div>
     <p class="why">Works with the Govee H5075 and other Govee sensors in that family.
-      Place it in the room \u2014 it broadcasts continuously and this page only listens.</p>
+      Place it in the room — it broadcasts continuously and this page only listens.</p>
     <p class="tip">Turn Bluetooth on, then use the button below — don't add the sensor
       in your computer's Bluetooth settings the way you would a speaker. It isn't
       that kind of device, and pairing it will only drop it again.</p>
@@ -552,9 +552,12 @@ select{width:100%;background:var(--night);border:1px solid var(--line);color:var
     <input type="range" id="dw" min="5" max="90" step="5" value="25">
     <label class="field">Correct the outdoor reading by <b id="lblOff">0.0</b> °C</label>
     <input type="range" id="off" min="-3" max="3" step="0.1" value="0">
-    <label class="field">Speak only between <b id="lblQh">07:00 and 23:00</b></label>
-    <input type="range" id="qs" min="0" max="12" step="1" value="7">
-    <input type="range" id="qe" min="13" max="24" step="1" value="23">
+    <label class="field">Speak only between</label>
+    <div class="btnrow">
+      <input type="time" id="qs" value="07:00">
+      <span style="color:var(--dim);font-size:12px;align-self:center">and</span>
+      <input type="time" id="qe" value="23:00">
+    </div>
     <div class="btnrow pushbottom">
       <button id="btnSave">Save settings</button>
       <button id="btnMute">Mute voice</button>
@@ -770,7 +773,7 @@ function key(d){ return d.hold?'hold':d.window+'|'+d.shutter+'|'+d.fan; }
 
 /* ---------- sound ----------
    A lift ding, then a malfunctioning robot reads the instruction.
-   Both synthesised here \u2014 no audio files, nothing to licence.       */
+   Both synthesised here — no audio files, nothing to licence.       */
 const VOICE_WANTED = 'Google UK English Male';
 
 let actx=null;
@@ -819,7 +822,7 @@ speechSynthesis.onvoiceschanged=pickVoice; pickVoice();
 function speak(text){
   if(S.muted) return;
   const h=new Date().getHours();
-  if(h<S.quietStart||h>=S.quietEnd){ log('Quiet hours \u2014 shown on screen only.'); return; }
+  if(h<S.quietStart||h>=S.quietEnd){ log('Quiet hours — shown on screen only.'); return; }
   try{ chime(); }catch(e){}
   setTimeout(()=>{
     if(!chosenVoice) pickVoice();
@@ -1028,7 +1031,7 @@ $('btnMatch').onclick=()=>{
     S.winState=d.window; S.shutState=d.shutter;
     store.set('win',S.winState); store.set('shut',S.shutState);
   }
-  S.pendingConfirm=false; log('Noted \u2014 window and shutters now match the advice.'); tick(true);
+  S.pendingConfirm=false; log('Noted — window and shutters now match the advice.'); tick(true);
 };
 
 /* Record a sun event you noticed away from the laptop. The sun position is
@@ -1036,7 +1039,7 @@ $('btnMatch').onclick=()=>{
 function recordSun(which, when){
   if(S.lat===null){ log('Set your location first.'); return; }
   const p=solarPosition(when,S.lat,S.lon);
-  if(p.elevation<=0){ log('The sun was below the horizon at that time \u2014 not recorded.'); return; }
+  if(p.elevation<=0){ log('The sun was below the horizon at that time — not recorded.'); return; }
   const arr=which==='in'?S.calIn:S.calOut;
   arr.push({az:p.azimuth,el:p.elevation,at:when.getTime()});
   if(arr.length>12) arr.shift();
@@ -1059,7 +1062,8 @@ $('btnManOut').onclick=()=>{ const w=manualWhen(); if(w) recordSun('out',w); };
 /* sliders stage their values; Save applies them */
 const draft={db:S.deadband,dw:S.dwellMin,off:S.offset,qs:S.quietStart,qe:S.quietEnd};
 function markDirty(){ $('btnSave').classList.add('dirty'); $('btnSave').textContent='Save settings'; }
-function qLabel(a,b){ $('lblQh').textContent=String(a).padStart(2,'0')+':00 and '+String(b).padStart(2,'0')+':00'; }
+function hhmmToHour(t){ return +t.split(':')[0]; }
+function hourToHHMM(h){ return String(h).padStart(2,'0')+':00'; }
 
 $('db').value=draft.db; $('lblDb').textContent=draft.db.toFixed(1);
 $('db').oninput=e=>{ draft.db=+e.target.value; $('lblDb').textContent=draft.db.toFixed(1); markDirty(); };
@@ -1067,9 +1071,10 @@ $('dw').value=draft.dw; $('lblDw').textContent=draft.dw;
 $('dw').oninput=e=>{ draft.dw=+e.target.value; $('lblDw').textContent=draft.dw; markDirty(); };
 $('off').value=draft.off; $('lblOff').textContent=draft.off.toFixed(1);
 $('off').oninput=e=>{ draft.off=+e.target.value; $('lblOff').textContent=draft.off.toFixed(1); markDirty(); };
-$('qs').value=draft.qs; $('qe').value=draft.qe; qLabel(draft.qs,draft.qe);
-$('qs').oninput=e=>{ draft.qs=+e.target.value; qLabel(draft.qs,draft.qe); markDirty(); };
-$('qe').oninput=e=>{ draft.qe=+e.target.value; qLabel(draft.qs,draft.qe); markDirty(); };
+$('qs').value=hourToHHMM(draft.qs);
+$('qe').value=hourToHHMM(draft.qe);
+$('qs').oninput=e=>{ draft.qs=hhmmToHour(e.target.value); markDirty(); };
+$('qe').oninput=e=>{ draft.qe=hhmmToHour(e.target.value); markDirty(); };
 
 $('btnSave').onclick=()=>{
   S.deadband=draft.db; S.dwellMin=draft.dw; S.offset=draft.off;
