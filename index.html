@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Passive Cooling Advisor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --night:#0E1826; --deep:#16233A; --line:#27374F;
+  --cool:#4FD1E0; --heat:#FF8A3D; --hold:#7C8AA3;
+  --ink:#EAF1F8; --dim:#8FA3BC; --ok:#7BE0A8;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--night);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased;min-height:100vh}
+.wrap{max-width:1080px;margin:0 auto;padding:28px 20px 80px}
+
+header{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;
+  border-bottom:1px solid var(--line);padding-bottom:14px;margin-bottom:26px}
+h1{font-size:21px;font-weight:800;letter-spacing:-.02em;margin:0}
+.spacer{flex:1}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--hold);display:inline-block;
+  margin-right:6px;vertical-align:middle}
+.dot.live{background:var(--ok);box-shadow:0 0 0 4px rgba(123,224,168,.15)}
+.status{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--dim)}
+
+/* verdict */
+.verdict{border:1px solid var(--line);border-radius:14px;background:var(--deep);
+  padding:24px 26px 22px;margin-bottom:22px;position:relative;overflow:hidden}
+.verdict::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;
+  background:var(--hold);transition:background .4s}
+.verdict[data-mode="cool"]::before{background:var(--cool)}
+.verdict[data-mode="seal"]::before{background:var(--heat)}
+.vhead{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.vhead svg{width:19px;height:19px;flex:none}
+.vlabel{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--dim)}
+.verdict[data-mode="cool"] .vhead{color:var(--cool)}
+.verdict[data-mode="seal"] .vhead{color:var(--heat)}
+.verdict[data-mode="hold"] .vhead{color:var(--hold)}
+.verdict[data-mode="cool"] .vlabel,.verdict[data-mode="seal"] .vlabel{color:inherit}
+.acts{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+.act{display:flex;align-items:center;gap:9px;border:1px solid var(--line);border-radius:11px;
+  padding:12px 15px;background:rgba(255,255,255,.02)}
+.act svg{width:22px;height:22px;flex:none}
+.act .txt{font-size:15px;font-weight:600;letter-spacing:-.01em}
+.act[data-t="open"]{border-color:rgba(79,209,224,.5);color:var(--cool)}
+.act[data-t="close"]{border-color:rgba(255,138,61,.5);color:var(--heat)}
+.act[data-t="idle"]{color:var(--hold)}
+.vwhy{font-size:14px;color:var(--dim);line-height:1.55;max-width:62ch;margin:0}
+.vmeta{margin-top:15px;display:flex;gap:22px;flex-wrap:wrap;
+  font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--dim)}
+
+/* axis */
+.axis{border:1px solid var(--line);border-radius:14px;background:var(--deep);
+  padding:22px 26px 18px;margin-bottom:22px}
+.axis h2,.card h3{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--dim);font-weight:500;margin:0 0 18px}
+.track{position:relative;height:74px}
+.rail{position:absolute;left:0;right:0;top:38px;height:2px;background:var(--line)}
+.band{position:absolute;top:30px;height:18px;background:rgba(124,138,163,.16);
+  border-left:1px dashed var(--hold);border-right:1px dashed var(--hold);transition:all .6s}
+.mark{position:absolute;top:0;transform:translateX(-50%);text-align:center;transition:left .6s}
+.mark .pip{width:2px;height:34px;margin:0 auto;background:currentColor}
+.mark .val{font-family:'IBM Plex Mono',monospace;font-size:15px;font-weight:500;line-height:1}
+.mark .tag{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.12em;
+  text-transform:uppercase;opacity:.65;margin-top:3px}
+.mark.inside{color:var(--heat)}
+.mark.outside{color:var(--cool);top:40px}
+.scale{display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;
+  font-size:10px;color:var(--dim);margin-top:4px}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-bottom:22px}
+.card{border:1px solid var(--line);border-radius:14px;background:var(--deep);padding:20px;
+  display:flex;flex-direction:column}
+.card.todo{border-color:rgba(255,138,61,.45)}
+.card.done{border-color:rgba(123,224,168,.3)}
+.stephead{display:flex;align-items:center;gap:9px;margin:0 0 12px}
+.num{font-family:'IBM Plex Mono',monospace;font-size:11px;width:21px;height:21px;flex:none;
+  border-radius:50%;border:1px solid var(--line);display:grid;place-items:center;color:var(--dim)}
+.card.done .num{background:var(--ok);color:var(--night);border-color:var(--ok)}
+.card.todo .num{border-color:var(--heat);color:var(--heat)}
+.steptitle{font-size:15px;font-weight:600;letter-spacing:-.01em}
+.why{font-size:13px;color:var(--dim);line-height:1.5;margin:0 0 14px}
+.tip{font-size:12px;color:var(--ink);line-height:1.5;margin:0 0 14px;
+  border-left:2px solid var(--heat);padding:9px 12px;background:rgba(255,138,61,.07);border-radius:0 7px 7px 0}
+.card.done .tip{display:none}
+.row{display:flex;justify-content:space-between;align-items:baseline;padding:7px 0;
+  border-bottom:1px solid rgba(39,55,79,.5);font-size:13px}
+.row:last-of-type{border-bottom:0}
+.row span:first-child{color:var(--dim)}
+.row b{font-family:'IBM Plex Mono',monospace;font-weight:500;font-size:13px}
+.pushbottom{margin-top:auto;padding-top:14px}
+
+button{font-family:'Archivo',sans-serif;font-size:13px;font-weight:600;cursor:pointer;
+  border-radius:9px;padding:11px 16px;border:1px solid var(--line);
+  background:transparent;color:var(--ink);transition:.15s}
+button:hover:not(:disabled){border-color:var(--cool);color:var(--cool)}
+button:disabled{opacity:.35;cursor:not-allowed}
+button.primary{background:var(--cool);color:var(--night);border-color:var(--cool)}
+button.primary:hover:not(:disabled){filter:brightness(1.1);color:var(--night)}
+button.dirty{background:var(--heat);border-color:var(--heat);color:var(--night)}
+button.dirty:hover{color:var(--night);filter:brightness(1.08)}
+button:focus-visible{outline:2px solid var(--cool);outline-offset:2px}
+.btnrow{display:flex;gap:10px;flex-wrap:wrap}
+label.field{display:block;font-size:12px;color:var(--dim);margin:15px 0 5px}
+input[type=range]{width:100%;accent-color:var(--cool)}
+input[type=time]{background:var(--night);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:9px 11px;font-family:'IBM Plex Mono',monospace;font-size:13px;flex:1}
+select{width:100%;background:var(--night);border:1px solid var(--line);color:var(--ink);
+  border-radius:8px;padding:9px 11px;font-family:'IBM Plex Mono',monospace;font-size:13px}
+.log{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--dim);
+  max-height:170px;overflow-y:auto;line-height:1.7}
+.log div{border-bottom:1px solid rgba(39,55,79,.4);padding:3px 0}
+.banner{border:1px solid var(--line);border-radius:13px;padding:20px 22px;margin-bottom:22px;
+  font-size:14px;line-height:1.55;background:var(--deep)}
+.banner b{font-weight:600}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>Passive Cooling Advisor</h1>
+  <span class="spacer"></span>
+  <span class="status"><span class="dot" id="dot"></span><span id="statusTxt">not started</span></span>
+</header>
+
+<div class="banner" id="startBanner">
+  Tells you the moment to open or close your windows and shutters, using one indoor
+  sensor and free outdoor weather. Three short setup steps below.
+  <div class="btnrow" style="margin-top:16px">
+    <button class="primary" id="btnStart">Start</button>
+    <button id="btnDemo">Try it without a sensor</button>
+  </div>
+</div>
+
+<div class="verdict" id="verdict" data-mode="hold">
+  <div class="vhead">
+    <span id="vIcon"></span>
+    <span class="vlabel" id="vLabel">Waiting for readings</span>
+  </div>
+  <div class="acts" id="vActs"></div>
+  <p class="vwhy" id="vWhy">Finish the setup steps below to begin.</p>
+  <div class="vmeta">
+    <span>unchanged for <b id="vHeld">—</b></span>
+    <span id="vQuiet"></span>
+  </div>
+</div>
+
+<div class="axis">
+  <h2>Inside against outside</h2>
+  <div class="track">
+    <div class="rail"></div>
+    <div class="band" id="band"></div>
+    <div class="mark inside" id="mIn" style="left:50%">
+      <div class="val" id="inVal">—</div><div class="tag">inside</div><div class="pip"></div>
+    </div>
+    <div class="mark outside" id="mOut" style="left:50%">
+      <div class="pip"></div><div class="val" id="outVal">—</div><div class="tag">outside</div>
+    </div>
+  </div>
+  <div class="scale"><span>—</span><span>—</span><span>—</span><span>—</span><span>—</span><span>—</span></div>
+</div>
+
+<div class="grid">
+
+  <div class="card todo" id="cardLoc">
+    <div class="stephead"><span class="num" id="numLoc">1</span><span class="steptitle">Your location</span></div>
+    <p class="why">Used to fetch the outdoor temperature where you actually are, and to
+      work out where the sun is in your sky. Nothing is stored anywhere but this browser.</p>
+    <p class="tip">Chrome may block the request without asking. If nothing happens,
+      click the icon at the left of the address bar and set Location to
+      <b>Allow</b>, then press the button again.</p>
+    <div class="btnrow"><button id="btnGeo">Use my location</button></div>
+    <p class="why" id="geoTxt" style="margin:12px 0 0"></p>
+    <label class="field">Which way does the window face?</label>
+    <select id="facing">
+      <option value="90">East</option><option value="45">North-east</option>
+      <option value="135">South-east</option><option value="180">South</option>
+      <option value="225">South-west</option><option value="270">West</option>
+      <option value="315">North-west</option><option value="0">North</option>
+    </select>
+  </div>
+
+  <div class="card todo" id="cardSensor">
+    <div class="stephead"><span class="num" id="numSensor">2</span><span class="steptitle">Your indoor sensor</span></div>
+    <p class="why">Works with the Govee H5075 and other Govee sensors in that family.
+      Place it in the room \u2014 it broadcasts continuously and this page only listens.</p>
+    <p class="tip">Turn Bluetooth on, then use the button below — don't add the sensor
+      in your computer's Bluetooth settings the way you would a speaker. It isn't
+      that kind of device, and pairing it will only drop it again.</p>
+    <div class="btnrow"><button id="btnConnect">Find my sensor</button></div>
+    <div class="pushbottom">
+      <div class="row"><span>Indoor temperature</span><b id="rIn">—</b></div>
+      <div class="row"><span>Sensor battery</span><b id="rBat">—</b></div>
+      <div class="row"><span>Last reading</span><b id="rAge">—</b></div>
+      <div class="row"><span>Outdoor temperature</span><b id="rOut">—</b></div>
+      <div class="row"><span>Cloud cover</span><b id="rCloud">—</b></div>
+    </div>
+  </div>
+
+  <div class="card todo" id="cardSun">
+    <div class="stephead"><span class="num" id="numSun">3</span><span class="steptitle">When sun reaches the window</span></div>
+    <p class="why">No forecast knows about the building opposite you. Press the buttons
+      the moment direct sun touches the glass and the moment it leaves, and the app
+      learns your real skyline. Repeat every few weeks to sharpen it.</p>
+    <div class="btnrow">
+      <button id="btnSunIn">Sun just arrived</button>
+      <button id="btnSunOut">Sun just left</button>
+    </div>
+    <label class="field">Or enter a time you noted earlier</label>
+    <div class="btnrow">
+      <input type="time" id="manTime">
+      <select id="manDay" style="width:auto"><option value="0">Today</option><option value="1">Yesterday</option><option value="2">2 days ago</option><option value="3">3 days ago</option></select>
+    </div>
+    <div class="btnrow" style="margin-top:9px">
+      <button id="btnManIn">Sun arrived then</button>
+      <button id="btnManOut">Sun left then</button>
+    </div>
+    <div class="pushbottom">
+      <div class="row"><span>Right now</span><b id="sNow">—</b></div>
+      <div class="row"><span>Expected today</span><b id="sWin">—</b></div>
+      <div class="row"><span>Readings recorded</span><b id="sCal">0 and 0</b></div>
+    </div>
+  </div>
+
+  <div class="card todo" id="cardState">
+    <div class="stephead"><span class="num" id="numState">4</span><span class="steptitle">How things stand right now</span></div>
+    <p class="why">The advice only counts as an action if it differs from what is already
+      set. Keep this honest and the app stops telling you to do things you have done.</p>
+    <div id="confirmBox" style="display:none" class="tip">
+      The advice just changed. Update these once you have moved things.
+    </div>
+    <label class="field">Window</label>
+    <div class="btnrow"><button id="btnWin" style="width:100%">Closed</button></div>
+    <label class="field">Shutters</label>
+    <div class="btnrow"><button id="btnShut" style="width:100%">Closed</button></div>
+    <label class="field">Room</label>
+    <div class="btnrow"><button id="btnOcc" style="width:100%">I'm in the room</button></div>
+    <div class="btnrow pushbottom"><button id="btnMatch" style="width:100%">Everything now matches the advice</button></div>
+  </div>
+
+  <div class="card">
+    <h3>Tuning</h3>
+    <label class="field">Ignore differences smaller than <b id="lblDb">1.5</b> °C</label>
+    <input type="range" id="db" min="0.3" max="4" step="0.1" value="1.5">
+    <label class="field">Wait at least <b id="lblDw">25</b> min before changing advice</label>
+    <input type="range" id="dw" min="5" max="90" step="5" value="25">
+    <label class="field">Correct the outdoor reading by <b id="lblOff">0.0</b> °C</label>
+    <input type="range" id="off" min="-3" max="3" step="0.1" value="0">
+    <label class="field">Speak only between <b id="lblQh">07:00 and 23:00</b></label>
+    <input type="range" id="qs" min="0" max="12" step="1" value="7">
+    <input type="range" id="qe" min="13" max="24" step="1" value="23">
+    <div class="btnrow pushbottom">
+      <button id="btnSave">Save settings</button>
+      <button id="btnMute">Mute voice</button>
+      <button id="btnTest">Test voice</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>What changed and when</h3>
+    <div class="log" id="log"><div>Not started.</div></div>
+  </div>
+
+</div>
+</div>
+
+<script>
+"use strict";
+
+/* ---------- icons ---------- */
+const I = {
+  alert:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 20h20L12 2z"/><path d="M12 9v5"/><path d="M12 17.5h.01"/></svg>',
+  info:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.5h.01"/></svg>',
+  windowOpen:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="18" rx="1"/><path d="M13 3h8v18h-8"/><path d="M17 3v18" stroke-dasharray="2 3"/><path d="M13 12h8"/></svg>',
+  windowClose:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M12 3v18"/><path d="M3 12h18"/></svg>',
+  shutterOpen:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M3 6h18"/><path d="M3 8.5h18"/><path d="M12 13v6"/><path d="M9 16l3 3 3-3"/></svg>',
+  shutterClose:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M3 7h18"/><path d="M3 11h18"/><path d="M3 15h18"/><path d="M3 19h18"/></svg>',
+  fanOn:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><path d="M12 10c0-4 1-7 3-7s2 4-1 6"/><path d="M14 12c4 0 7 1 7 3s-4 2-6-1"/><path d="M12 14c0 4-1 7-3 7s-2-4 1-6"/><path d="M10 12c-4 0-7-1-7-3s4-2 6 1"/></svg>',
+  fanOff:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><path d="M12 10c0-4 1-7 3-7s2 4-1 6"/><path d="M10 12c-4 0-7-1-7-3s4-2 6 1"/><path d="M4 4l16 16"/></svg>',
+  fanWindow:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="12" r="2"/><path d="M7 10c0-3 .7-5 2-5s1.4 2.8-.7 4.3"/><path d="M5 12c-2.7 0-4.6-.7-4.6-2"/><path d="M13 12h8"/><path d="M18 8l4 4-4 4"/></svg>',
+  pause:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9 12h6"/></svg>'
+};
+
+/* ---------- storage ---------- */
+const mem = {};
+const store = {
+  get(k,d){try{const v=localStorage.getItem(k);return v===null?d:JSON.parse(v);}catch(e){return k in mem?mem[k]:d;}},
+  set(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){mem[k]=v;}}
+};
+
+/* ---------- state ---------- */
+const S = {
+  lat: store.get('lat',null), lon: store.get('lon',null),
+  facing: store.get('facing',90),
+  calIn: store.get('calIn',[]), calOut: store.get('calOut',[]),
+  deadband: store.get('db',1.5), dwellMin: store.get('dw',25),
+  offset: store.get('off',0),
+  quietStart: store.get('qs',7), quietEnd: store.get('qe',23),
+  muted:false, occupied:store.get('occ',true),
+  winState:store.get('win','closed'), shutState:store.get('shut','closed'),
+  pendingConfirm:false,
+  indoor:null, indoorH:null, batt:null, lastPacket:null,
+  outdoorRaw:null, outdoor:null, cloud:null, weatherAt:null,
+  action:null, actionSince:null, started:false, demo:false
+};
+
+/* ---------- solar position (NOAA, no network) ---------- */
+function solarPosition(date, lat, lon){
+  const rad=Math.PI/180;
+  const jd=date.getTime()/86400000+2440587.5, n=jd-2451545.0;
+  const L=((280.460+0.9856474*n)%360+360)%360;
+  const g=(((357.528+0.9856003*n)%360+360)%360)*rad;
+  const lambda=(L+1.915*Math.sin(g)+0.020*Math.sin(2*g))*rad;
+  const eps=(23.439-0.0000004*n)*rad;
+  const ra=Math.atan2(Math.cos(eps)*Math.sin(lambda),Math.cos(lambda));
+  const dec=Math.asin(Math.sin(eps)*Math.sin(lambda));
+  let gmst=(18.697374558+24.06570982441908*n)%24; if(gmst<0)gmst+=24;
+  const H=(gmst*15+lon)*rad-ra, latr=lat*rad;
+  const el=Math.asin(Math.sin(latr)*Math.sin(dec)+Math.cos(latr)*Math.cos(dec)*Math.cos(H));
+  let az=Math.atan2(-Math.sin(H),Math.tan(dec)*Math.cos(latr)-Math.sin(latr)*Math.cos(H));
+  return {elevation:el/rad, azimuth:((az/rad)+360)%360};
+}
+
+function arrivalElevationAt(az){
+  const p=S.calIn; if(!p.length) return null; if(p.length===1) return p[0].el;
+  let n=p.length,sx=0,sy=0,sxy=0,sxx=0;
+  for(const q of p){sx+=q.az;sy+=q.el;sxy+=q.az*q.el;sxx+=q.az*q.az;}
+  const den=n*sxx-sx*sx; if(Math.abs(den)<1e-9) return sy/n;
+  const a=(n*sxy-sx*sy)/den; return a*az+(sy-a*sx)/n;
+}
+function departureAzimuth(){
+  if(!S.calOut.length) return null;
+  return S.calOut.reduce((s,p)=>s+p.az,0)/S.calOut.length;
+}
+function isSunlit(pos){
+  if(pos.elevation<=0) return false;
+  const arrEl=arrivalElevationAt(pos.azimuth), depAz=departureAzimuth();
+  if(arrEl===null&&depAz===null){
+    const d=Math.abs(((pos.azimuth-S.facing+540)%360)-180); return d<90;
+  }
+  if(arrEl!==null&&pos.elevation<arrEl) return false;
+  if(depAz!==null&&pos.azimuth>depAz) return false;
+  return true;
+}
+function sunWindowToday(){
+  if(S.lat===null) return {start:null,end:null};
+  const base=new Date(); base.setHours(0,0,0,0);
+  let start=null,end=null;
+  for(let m=0;m<1440;m+=2){
+    const t=new Date(base.getTime()+m*60000);
+    if(isSunlit(solarPosition(t,S.lat,S.lon))){ if(!start)start=t; end=t; }
+  }
+  return {start,end};
+}
+
+/* ---------- Govee H5075 ---------- */
+const GOVEE_MFR=0xEC88;
+function decodeGovee(view){
+  const b=[]; for(let i=0;i<view.byteLength;i++) b.push(view.getUint8(i));
+  const off=(b.length>=5&&b[0]===0x00)?1:0;
+  if(b.length<off+4) return null;
+  let raw=(b[off]<<16)|(b[off+1]<<8)|b[off+2], neg=false;
+  if(raw&0x800000){neg=true;raw=raw&0x7FFFFF;}
+  let t=raw/10000; const h=(raw%1000)/10;
+  if(neg) t=-t;
+  if(t<-30||t>80) return null;
+  return {tempC:t, hum:h, batt:b[off+3]};
+}
+let bleDevice=null, bleAbort=null;
+function onAdvert(ev){
+  const d=ev.manufacturerData.get(GOVEE_MFR); if(!d) return;
+  const r=decodeGovee(d); if(!r) return;
+  S.indoor=r.tempC; S.indoorH=r.hum; S.batt=r.batt; S.lastPacket=Date.now();
+  setStatus(true,'sensor live');
+}
+async function connectSensor(){
+  if(!navigator.bluetooth){
+    log('This browser cannot listen for Bluetooth sensors. Use Chrome on Android or desktop.');
+    setStatus(false,'not supported'); return false;
+  }
+  try{
+    bleDevice=await navigator.bluetooth.requestDevice({
+      filters:[{namePrefix:'GVH'},{namePrefix:'Govee'}],
+      optionalManufacturerData:[GOVEE_MFR]
+    });
+    return await startListening();
+  }catch(e){
+    if(e.name==='NotFoundError') log('No sensor chosen. Press Find my sensor to try again.');
+    else if(String(e.message).includes('user gesture')) log('Press Find my sensor to try again.');
+    else log('Could not reach the sensor: '+e.message);
+    setStatus(false,'no sensor'); return false;
+  }
+}
+async function startListening(){
+  if(!bleDevice) return false;
+  try{
+    if(bleAbort) bleAbort.abort();
+    bleAbort=new AbortController();
+    bleDevice.removeEventListener('advertisementreceived',onAdvert);
+    bleDevice.addEventListener('advertisementreceived',onAdvert);
+    await bleDevice.watchAdvertisements({signal:bleAbort.signal});
+    log('Listening to '+(bleDevice.name||'the sensor')+'.');
+    setStatus(true,'listening'); return true;
+  }catch(e){ log('Lost the sensor: '+e.message+' — retrying.'); setStatus(false,'reconnecting'); return false; }
+}
+setInterval(()=>{
+  if(!S.started||S.demo||!bleDevice||!S.lastPacket) return;
+  if(Date.now()-S.lastPacket>90000){ setStatus(false,'no readings — retrying'); startListening(); }
+},30000);
+
+/* ---------- weather ---------- */
+async function fetchWeather(){
+  if(S.lat===null) return;
+  try{
+    const r=await fetch('https://api.open-meteo.com/v1/forecast?latitude='+S.lat+
+      '&longitude='+S.lon+'&current=temperature_2m,cloud_cover');
+    const j=await r.json();
+    S.outdoorRaw=j.current.temperature_2m;
+    S.cloud=j.current.cloud_cover;
+    S.weatherAt=Date.now();
+  }catch(e){ log('Could not fetch the outdoor temperature.'); }
+}
+
+/* ---------- rule engine ---------- */
+function decide(){
+  if(S.indoor===null||S.outdoor===null) return null;
+  const diff=S.outdoor-S.indoor;
+  const cooler=diff<-S.deadband, warmer=diff>S.deadband;
+  const pos=S.lat!==null?solarPosition(new Date(),S.lat,S.lon):{elevation:-10,azimuth:0};
+  const lit=isSunlit(pos)&&(S.cloud===null||S.cloud<80);
+
+  if(!cooler&&!warmer)
+    return {hold:true, why:'Inside and outside are close enough that opening up would not gain you anything.'};
+
+  let window,shutter,why;
+  if(cooler){
+    window='open'; shutter=lit?'close':'open';
+    why=lit
+      ? 'Outside is '+Math.abs(diff).toFixed(1)+' °C cooler, but sun is on the glass. Take the air, block the heat.'
+      : 'Outside is '+Math.abs(diff).toFixed(1)+' °C cooler and no sun on the glass. Cool air and daylight both come free right now.';
+  }else{
+    window='close'; shutter=lit?'close':'open';
+    why=lit
+      ? 'Outside is '+diff.toFixed(1)+' °C warmer and sun is on the glass. Shut everything.'
+      : 'Outside is '+diff.toFixed(1)+' °C warmer, but no sun on the glass. Keep the hot air out and the daylight in.';
+  }
+  let fan;
+  if(!S.occupied&&window==='close') fan='off';
+  else if(S.indoor>=35) fan='off';
+  else if(window==='open'&&cooler&&Math.abs(diff)>3) fan='window';
+  else fan='on';
+
+  return {hold:false, window, shutter, fan, lit, diff, why};
+}
+function phrase(d){
+  if(d.hold) return 'Nothing to change right now';
+  const p=[d.window==='open'?'Open the window':'Close the window',
+           d.shutter==='open'?'open the shutters':'close the shutters'];
+  if(d.fan==='window') p.push('point the fan out of the window');
+  else if(d.fan==='off') p.push('turn the fan off');
+  return p.join(', ');
+}
+function key(d){ return d.hold?'hold':d.window+'|'+d.shutter+'|'+d.fan; }
+
+/* ---------- sound ----------
+   A lift ding, then a malfunctioning robot reads the instruction.
+   Both synthesised here \u2014 no audio files, nothing to licence.       */
+const VOICE_WANTED = 'Google UK English Male';
+
+let actx=null;
+function ac(){ actx=actx||new (window.AudioContext||window.webkitAudioContext)();
+  if(actx.state==='suspended') actx.resume(); return actx; }
+
+// one partial of a struck bell
+function tone(f,t,dur,gain){
+  const c=ac(),o=c.createOscillator(),g=c.createGain();
+  o.type='sine'; o.frequency.value=f;
+  g.gain.setValueAtTime(.0001,t);
+  g.gain.exponentialRampToValueAtTime(gain,t+.012);
+  g.gain.exponentialRampToValueAtTime(.0001,t+dur);
+  o.connect(g); g.connect(c.destination); o.start(t); o.stop(t+dur+.05);
+}
+// inharmonic partials are what make metal sound like metal
+function bell(f,t,dur,gain){
+  [[1,1],[2.76,.42],[5.4,.22],[8.9,.12]].forEach(([m,a])=>
+    tone(f*m,t,dur/Math.sqrt(m),gain*a));
+}
+// short filtered noise burst: the mechanical click under the ding
+function click(t){
+  const c=ac(),sr=c.sampleRate,buf=c.createBuffer(1,Math.floor(sr*.06),sr),d=buf.getChannelData(0);
+  for(let i=0;i<d.length;i++) d[i]=Math.random()*2-1;
+  const src=c.createBufferSource(); src.buffer=buf;
+  const bp=c.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=3000; bp.Q.value=2;
+  const g=c.createGain(); g.gain.setValueAtTime(.1,t);
+  g.gain.exponentialRampToValueAtTime(.0001,t+.06);
+  src.connect(bp); bp.connect(g); g.connect(c.destination); src.start(t);
+}
+function chime(){ const t=ac().currentTime; bell(1318.5,t,1.5,.3); click(t); }
+
+/* Voice lookup. The wanted voice ships with Chrome's Google TTS but is not
+   guaranteed, so fall back through UK male, any UK, any English. */
+let chosenVoice=null;
+function pickVoice(){
+  const v=speechSynthesis.getVoices(); if(!v.length) return;
+  chosenVoice = v.find(x=>x.name===VOICE_WANTED)
+             || v.find(x=>/UK.*Male/i.test(x.name))
+             || v.find(x=>x.lang==='en-GB')
+             || v.find(x=>x.lang.startsWith('en'))
+             || v[0];
+}
+speechSynthesis.onvoiceschanged=pickVoice; pickVoice();
+
+function speak(text){
+  if(S.muted) return;
+  const h=new Date().getHours();
+  if(h<S.quietStart||h>=S.quietEnd){ log('Quiet hours \u2014 shown on screen only.'); return; }
+  try{ chime(); }catch(e){}
+  setTimeout(()=>{
+    if(!chosenVoice) pickVoice();
+    const u=new SpeechSynthesisUtterance('Instruction. '+text+'. Compliance. Is. Expected.');
+    if(chosenVoice) u.voice=chosenVoice;
+    u.rate=.55; u.pitch=.2;
+    speechSynthesis.cancel(); speechSynthesis.speak(u);
+  },1150);
+}
+
+/* ---------- tick ---------- */
+let lastCommitted=null;
+async function tick(force){
+  if(!S.weatherAt||Date.now()-S.weatherAt>600000) await fetchWeather();
+  if(S.demo){ S.indoor=27.4+Math.sin(Date.now()/900000)*1.6; S.batt=96; S.lastPacket=Date.now(); }
+  if(S.outdoorRaw!==null) S.outdoor=S.outdoorRaw+S.offset;
+
+  const d=decide();
+  if(d){
+    const k=key(d);
+    const dwellOk=!S.actionSince||(Date.now()-S.actionSince)>S.dwellMin*60000;
+    if(lastCommitted===null) commit(d,k,true);
+    else if(k!==lastCommitted&&(dwellOk||force)) commit(d,k,false);
+    else S.action=d;   // same advice, refresh the wording and numbers
+  }
+  render();
+}
+// True when the advice asks for nothing you haven't already done.
+function alreadyMatches(d){
+  if(!d||d.hold) return true;
+  return d.window===S.winState && d.shutter===S.shutState;
+}
+function commit(d,k,first){
+  lastCommitted=k; S.action=d; S.actionSince=Date.now();
+  const t=phrase(d);
+  const settled=alreadyMatches(d);
+  log(t+(d.hold?'':'  ·  '+d.diff.toFixed(1)+' °C apart'+(d.lit?', sun on glass':''))
+       +(settled&&!d.hold?'  ·  already set that way':''));
+  if(!d.hold && !settled){
+    S.pendingConfirm=true;      // ask for a state update once they have moved things
+    if(!first) speak(t);
+  }
+}
+
+/* ---------- render ---------- */
+const $=id=>document.getElementById(id);
+const clock=d=>d?String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'):'—';
+
+function actChip(icon,text,type){
+  return '<div class="act" data-t="'+type+'">'+icon+'<span class="txt">'+text+'</span></div>';
+}
+function render(){
+  if(S.outdoorRaw!==null) S.outdoor=S.outdoorRaw+S.offset;
+  const d=S.action;
+
+  if(d){
+    $('verdict').dataset.mode=d.hold?'hold':(d.window==='open'?'cool':'seal');
+    $('vWhy').textContent=d.why;
+    if(d.hold){
+      $('vIcon').innerHTML=I.info;
+      $('vLabel').textContent='Just so you know';
+      $('vActs').innerHTML=actChip(I.pause,'Leave everything as it is','idle');
+    }else{
+      $('vIcon').innerHTML=I.alert;
+      $('vLabel').textContent='Do this now';
+      let h='';
+      h+=d.window==='open'?actChip(I.windowOpen,'Open the window','open')
+                          :actChip(I.windowClose,'Close the window','close');
+      h+=d.shutter==='open'?actChip(I.shutterOpen,'Open the shutters','open')
+                           :actChip(I.shutterClose,'Close the shutters','close');
+      if(d.fan==='window') h+=actChip(I.fanWindow,'Point the fan out','open');
+      else if(d.fan==='off') h+=actChip(I.fanOff,'Turn the fan off','close');
+      else h+=actChip(I.fanOn,'Keep the fan on you','idle');
+      $('vActs').innerHTML=h;
+    }
+  }
+  if(S.actionSince){
+    const m=Math.floor((Date.now()-S.actionSince)/60000);
+    $('vHeld').textContent=m<60?m+' min':(m/60).toFixed(1)+' h';
+  }
+  const hr=new Date().getHours();
+  $('vQuiet').textContent=(hr<S.quietStart||hr>=S.quietEnd)?'quiet hours — screen only':'';
+
+  const vals=[S.indoor,S.outdoor].filter(v=>v!==null&&v!==undefined);
+  let lo=15,hi=40;
+  if(vals.length){
+    const mn=Math.min(...vals),mx=Math.max(...vals);
+    const pad=Math.max(4,(mx-mn)*0.9);
+    lo=Math.floor(mn-pad); hi=Math.ceil(mx+pad);
+  }
+  const span=Math.max(1,hi-lo);
+  const pct=t=>Math.max(2,Math.min(98,((t-lo)/span)*100));
+  const sc=document.querySelectorAll('.scale span');
+  sc.forEach((el,i)=>{ el.textContent=Math.round(lo+span*i/(sc.length-1))+'°'; });
+
+  if(S.indoor!==null){
+    $('mIn').style.left=pct(S.indoor)+'%'; $('inVal').textContent=S.indoor.toFixed(1)+'°';
+    const a=pct(S.indoor-S.deadband),b=pct(S.indoor+S.deadband);
+    $('band').style.left=a+'%'; $('band').style.width=Math.max(0,b-a)+'%';
+  }
+  if(S.outdoor!==null){
+    $('mOut').style.left=pct(S.outdoor)+'%'; $('outVal').textContent=S.outdoor.toFixed(1)+'°';
+  }
+
+  $('rIn').textContent=S.indoor===null?'—':S.indoor.toFixed(1)+' °C';
+  $('rBat').textContent=S.batt===null?'—':S.batt+' %';
+  $('rOut').textContent=S.outdoor===null?'—':S.outdoor.toFixed(1)+' °C';
+  $('rCloud').textContent=S.cloud===null?'—':S.cloud+' %';
+  $('rAge').textContent=S.lastPacket?Math.round((Date.now()-S.lastPacket)/1000)+' s ago':'—';
+
+  if(S.lat!==null){
+    const pos=solarPosition(new Date(),S.lat,S.lon);
+    $('sNow').textContent=isSunlit(pos)?'on the glass':'off the glass';
+    const w=sunWindowToday();
+    $('sWin').textContent=w.start?clock(w.start)+' to '+clock(w.end):'not today';
+  }
+  $('sCal').textContent=S.calIn.length+' and '+S.calOut.length;
+
+  $('btnWin').textContent=S.winState==='open'?'Open':'Closed';
+  $('btnShut').textContent=S.shutState==='open'?'Open':'Closed';
+  $('btnOcc').textContent=S.occupied?"I'm in the room":'Room is empty';
+  $('confirmBox').style.display=S.pendingConfirm?'block':'none';
+  $('cardState').className='card '+(S.pendingConfirm?'todo':'done');
+  $('numState').textContent=S.pendingConfirm?'4':'\u2713';
+  if(d && !d.hold && alreadyMatches(d)){
+    $('vLabel').textContent='Already set correctly';
+    $('vIcon').innerHTML=I.info;
+    $('verdict').dataset.mode='hold';
+  }
+
+  $('cardLoc').className='card '+(S.lat!==null?'done':'todo');
+  $('numLoc').textContent=S.lat!==null?'✓':'1';
+  const sensorOk=S.lastPacket&&Date.now()-S.lastPacket<120000;
+  $('cardSensor').className='card '+(sensorOk?'done':'todo');
+  $('numSensor').textContent=sensorOk?'✓':'2';
+  const calOk=S.calIn.length>0&&S.calOut.length>0;
+  $('cardSun').className='card '+(calOk?'done':'todo');
+  $('numSun').textContent=calOk?'✓':'3';
+}
+function setStatus(live,txt){
+  $('dot').className='dot'+(live?' live':''); $('statusTxt').textContent=txt;
+}
+function log(msg){
+  const el=$('log'), t=new Date(), line=document.createElement('div');
+  line.textContent=clock(t)+':'+String(t.getSeconds()).padStart(2,'0')+'  '+msg;
+  if(el.firstChild&&el.firstChild.textContent.includes('Not started')) el.innerHTML='';
+  el.insertBefore(line,el.firstChild);
+}
+
+/* ---------- wiring ---------- */
+$('btnStart').onclick=async()=>{
+  S.started=true; $('startBanner').style.display='none';
+  setStatus(false,'choosing sensor…');
+  await connectSensor();                 // gesture must not be spent before this
+  if(S.lat===null) await getGeo();
+  await fetchWeather(); tick(true);
+};
+$('btnDemo').onclick=async()=>{
+  S.started=true; S.demo=true; $('startBanner').style.display='none';
+  setStatus(true,'simulated readings');
+  if(S.lat===null) await getGeo();
+  await fetchWeather(); tick(true);
+};
+$('btnConnect').onclick=async()=>{ S.started=true; setStatus(false,'choosing sensor…'); await connectSensor(); tick(true); };
+
+async function getGeo(){
+  return new Promise(res=>{
+    if(!navigator.geolocation){ $('geoTxt').textContent='This browser has no location support.'; return res(); }
+    navigator.geolocation.getCurrentPosition(p=>{
+      S.lat=+p.coords.latitude.toFixed(4); S.lon=+p.coords.longitude.toFixed(4);
+      store.set('lat',S.lat); store.set('lon',S.lon);
+      $('geoTxt').textContent='Set. Outdoor readings now come from your area.';
+      fetchWeather().then(()=>tick(true)); res();
+    },()=>{
+      $('geoTxt').textContent='Blocked. Open the icon at the left of the address bar, allow Location, then press the button again.';
+      res();
+    },{timeout:10000});
+  });
+}
+$('btnGeo').onclick=getGeo;
+if(S.lat!==null) $('geoTxt').textContent='Set. Outdoor readings come from your area.';
+
+$('btnSunIn').onclick=()=>recordSun('in',new Date());
+$('btnSunOut').onclick=()=>recordSun('out',new Date());
+
+$('facing').value=String(S.facing);
+$('facing').onchange=e=>{ S.facing=+e.target.value; store.set('facing',S.facing); tick(true); };
+
+function setState(k,v){
+  S[k]=v; store.set(k==='winState'?'win':k==='shutState'?'shut':'occ',v);
+  if(S.action && alreadyMatches(S.action)) S.pendingConfirm=false;
+  tick(true);
+}
+$('btnWin').onclick=()=>setState('winState',S.winState==='open'?'closed':'open');
+$('btnShut').onclick=()=>setState('shutState',S.shutState==='open'?'closed':'open');
+$('btnOcc').onclick=()=>setState('occupied',!S.occupied);
+$('btnMatch').onclick=()=>{
+  const d=S.action;
+  if(d&&!d.hold){
+    S.winState=d.window; S.shutState=d.shutter;
+    store.set('win',S.winState); store.set('shut',S.shutState);
+  }
+  S.pendingConfirm=false; log('Noted \u2014 window and shutters now match the advice.'); tick(true);
+};
+
+/* Record a sun event you noticed away from the laptop. The sun position is
+   recomputed for the time you give, so a late entry is just as accurate. */
+function recordSun(which, when){
+  if(S.lat===null){ log('Set your location first.'); return; }
+  const p=solarPosition(when,S.lat,S.lon);
+  if(p.elevation<=0){ log('The sun was below the horizon at that time \u2014 not recorded.'); return; }
+  const arr=which==='in'?S.calIn:S.calOut;
+  arr.push({az:p.azimuth,el:p.elevation,at:when.getTime()});
+  if(arr.length>12) arr.shift();
+  store.set(which==='in'?'calIn':'calOut',arr);
+  log('Recorded: sun '+(which==='in'?'reached':'left')+' the window at '+clock(when)+'.');
+  tick(true);
+}
+function manualWhen(){
+  const t=$('manTime').value;
+  if(!t){ log('Enter a time first.'); return null; }
+  const [h,m]=t.split(':').map(Number);
+  const d=new Date(); d.setDate(d.getDate()-(+$('manDay').value));
+  d.setHours(h,m,0,0);
+  if(d.getTime()>Date.now()){ log('That time has not happened yet.'); return null; }
+  return d;
+}
+$('btnManIn').onclick=()=>{ const w=manualWhen(); if(w) recordSun('in',w); };
+$('btnManOut').onclick=()=>{ const w=manualWhen(); if(w) recordSun('out',w); };
+
+/* sliders stage their values; Save applies them */
+const draft={db:S.deadband,dw:S.dwellMin,off:S.offset,qs:S.quietStart,qe:S.quietEnd};
+function markDirty(){ $('btnSave').classList.add('dirty'); $('btnSave').textContent='Save settings'; }
+function qLabel(a,b){ $('lblQh').textContent=String(a).padStart(2,'0')+':00 and '+String(b).padStart(2,'0')+':00'; }
+
+$('db').value=draft.db; $('lblDb').textContent=draft.db.toFixed(1);
+$('db').oninput=e=>{ draft.db=+e.target.value; $('lblDb').textContent=draft.db.toFixed(1); markDirty(); };
+$('dw').value=draft.dw; $('lblDw').textContent=draft.dw;
+$('dw').oninput=e=>{ draft.dw=+e.target.value; $('lblDw').textContent=draft.dw; markDirty(); };
+$('off').value=draft.off; $('lblOff').textContent=draft.off.toFixed(1);
+$('off').oninput=e=>{ draft.off=+e.target.value; $('lblOff').textContent=draft.off.toFixed(1); markDirty(); };
+$('qs').value=draft.qs; $('qe').value=draft.qe; qLabel(draft.qs,draft.qe);
+$('qs').oninput=e=>{ draft.qs=+e.target.value; qLabel(draft.qs,draft.qe); markDirty(); };
+$('qe').oninput=e=>{ draft.qe=+e.target.value; qLabel(draft.qs,draft.qe); markDirty(); };
+
+$('btnSave').onclick=()=>{
+  S.deadband=draft.db; S.dwellMin=draft.dw; S.offset=draft.off;
+  S.quietStart=draft.qs; S.quietEnd=draft.qe;
+  store.set('db',S.deadband); store.set('dw',S.dwellMin); store.set('off',S.offset);
+  store.set('qs',S.quietStart); store.set('qe',S.quietEnd);
+  $('btnSave').classList.remove('dirty'); $('btnSave').textContent='Saved';
+  setTimeout(()=>{ $('btnSave').textContent='Save settings'; },1600);
+  log('Settings saved. Checking again now.');
+  tick(true);   // deliberate change: re-check immediately, ignore the waiting time
+};
+
+$('btnMute').onclick=e=>{ S.muted=!S.muted; e.target.textContent=S.muted?'Unmute voice':'Mute voice'; };
+$('btnTest').onclick=()=>speak('Open the window, close the shutters');
+
+setInterval(()=>{ if(S.started) tick(false); },60000);
+setInterval(render,5000);
+render();
+</script>
+</body>
+</html>
