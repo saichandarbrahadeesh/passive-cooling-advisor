@@ -477,6 +477,15 @@ select{width:100%;background:var(--night);border:1px solid var(--line);color:var
       <b>Allow</b>, then press the button again.</p>
     <div class="btnrow"><button id="btnGeo">Use my location</button></div>
     <p class="why" id="geoTxt" style="margin:12px 0 0"></p>
+    <div id="placeBox" style="display:none;margin:2px 0 4px">
+      <div class="row"><span>Detected as</span><b id="placeName">—</b></div>
+    </div>
+    <label class="field">Not the right place? Search for it</label>
+    <div class="btnrow">
+      <input type="text" id="placeSearch" placeholder="Town or city name" style="flex:1;background:var(--night);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:9px 11px;font-family:'IBM Plex Mono',monospace;font-size:13px">
+      <button id="btnPlaceSearch">Search</button>
+    </div>
+    <div id="placeResults" style="margin-top:8px"></div>
     <label class="field">Which way does the window face?</label>
     <select id="facing">
       <option value="90">East</option><option value="45">North-east</option>
@@ -504,27 +513,26 @@ select{width:100%;background:var(--night);border:1px solid var(--line);color:var
   </div>
 
   <div class="card todo" id="cardSun">
-    <div class="stephead"><span class="num" id="numSun">3</span><span class="steptitle">When sun reaches the window</span></div>
-    <p class="why">No forecast knows about the building opposite you. Press the buttons
-      the moment direct sun touches the glass and the moment it leaves, and the app
-      learns your real skyline. Repeat every few weeks to sharpen it.</p>
-    <div class="btnrow">
-      <button id="btnSunIn">Sun just arrived</button>
-      <button id="btnSunOut">Sun just left</button>
+    <div class="stephead"><span class="num" id="numSun">3</span><span class="steptitle">Direct sunlight on the window</span></div>
+    <p class="why">Watch the window on a clear day and note the two times: when a patch of
+      direct sunlight first lands on the glass, and when it slides off. Not when the room
+      turns bright — brightness arrives long before the sun does. Direct light only, the
+      kind that casts a hard shadow. No forecast knows about the building opposite you,
+      so this is the one thing the app cannot work out alone.</p>
+    <label class="field">Direct sunlight first hits the glass at</label>
+    <input type="time" id="sunFrom" style="width:100%">
+    <label class="field">Direct sunlight leaves the glass at</label>
+    <input type="time" id="sunTo" style="width:100%">
+    <div class="btnrow" style="margin-top:14px">
+      <button id="btnSunSave">Save these times</button>
+      <button id="btnSunClear">Clear</button>
     </div>
-    <label class="field">Or enter a time you noted earlier</label>
-    <div class="btnrow">
-      <input type="time" id="manTime">
-      <select id="manDay" style="width:auto"><option value="0">Today</option><option value="1">Yesterday</option><option value="2">2 days ago</option><option value="3">3 days ago</option></select>
-    </div>
-    <div class="btnrow" style="margin-top:9px">
-      <button id="btnManIn">Sun arrived then</button>
-      <button id="btnManOut">Sun left then</button>
-    </div>
+    <p class="why" style="margin:12px 0 0">Times are read against today's date. Re-enter
+      them every few weeks and the app tracks the drift for you.</p>
     <div class="pushbottom">
       <div class="row"><span>Right now</span><b id="sNow">—</b></div>
       <div class="row"><span>Expected today</span><b id="sWin">—</b></div>
-      <div class="row"><span>Readings recorded</span><b id="sCal">0 and 0</b></div>
+      <div class="row"><span>Observations saved</span><b id="sCal">0 and 0</b></div>
     </div>
   </div>
 
@@ -819,6 +827,19 @@ function pickVoice(){
 }
 speechSynthesis.onvoiceschanged=pickVoice; pickVoice();
 
+/* Chrome only lets audio start from a user gesture. Creating and resuming the
+   context during the Start click keeps every later automatic announcement audible. */
+function unlockAudio(){
+  try{
+    const c=ac();
+    const o=c.createOscillator(), g=c.createGain();
+    g.gain.value=0.0001;                 // silent, just to open the pipe
+    o.connect(g); g.connect(c.destination);
+    o.start(); o.stop(c.currentTime+0.01);
+    speechSynthesis.resume();
+  }catch(e){}
+}
+
 function speak(text){
   if(S.muted) return;
   const h=new Date().getHours();
@@ -863,7 +884,7 @@ function commit(d,k,first){
        +(settled&&!d.hold?'  ·  already set that way':''));
   if(!d.hold && !settled){
     S.pendingConfirm=true;      // ask for a state update once they have moved things
-    if(!first) speak(t);
+    speak(t);                   // every change speaks, including the first
   }
 }
 
@@ -980,27 +1001,43 @@ function showIntro(on){
 $('btnWhat').onclick=()=>showIntro(true);
 
 $('btnStart').onclick=async()=>{
-  S.started=true; showIntro(false);
+  S.started=true; unlockAudio(); showIntro(false);
   setStatus(false,'choosing sensor…');
   await connectSensor();                 // gesture must not be spent before this
   if(S.lat===null) await getGeo();
   await fetchWeather(); tick(true);
 };
 $('btnDemo').onclick=async()=>{
-  S.started=true; S.demo=true; showIntro(false);
+  S.started=true; S.demo=true; unlockAudio(); showIntro(false);
   setStatus(true,'simulated readings');
   if(S.lat===null) await getGeo();
   await fetchWeather(); tick(true);
 };
-$('btnConnect').onclick=async()=>{ S.started=true; setStatus(false,'choosing sensor…'); await connectSensor(); tick(true); };
+$('btnConnect').onclick=async()=>{ S.started=true; unlockAudio(); setStatus(false,'choosing sensor…'); await connectSensor(); tick(true); };
+
+async function reverseGeocode(lat,lon){
+  try{
+    const r=await fetch('https://geocoding-api.open-meteo.com/v1/reverse?latitude='+lat+'&longitude='+lon+'&language=en');
+    const j=await r.json();
+    const it=j.results&&j.results[0];
+    if(!it) return null;
+    return [it.name,it.admin1,it.country].filter(Boolean).join(', ');
+  }catch(e){ return null; }
+}
+function showPlace(name){
+  $('placeBox').style.display='block';
+  $('placeName').textContent=name||'Coordinates only — name unavailable';
+}
 
 async function getGeo(){
   return new Promise(res=>{
     if(!navigator.geolocation){ $('geoTxt').textContent='This browser has no location support.'; return res(); }
-    navigator.geolocation.getCurrentPosition(p=>{
+    navigator.geolocation.getCurrentPosition(async p=>{
       S.lat=+p.coords.latitude.toFixed(4); S.lon=+p.coords.longitude.toFixed(4);
       store.set('lat',S.lat); store.set('lon',S.lon);
       $('geoTxt').textContent='Set. Outdoor readings now come from your area.';
+      const name=await reverseGeocode(S.lat,S.lon);
+      store.set('placeName',name); showPlace(name);
       fetchWeather().then(()=>tick(true)); res();
     },()=>{
       $('geoTxt').textContent='Blocked. Open the icon at the left of the address bar, allow Location, then press the button again.';
@@ -1009,10 +1046,40 @@ async function getGeo(){
   });
 }
 $('btnGeo').onclick=getGeo;
-if(S.lat!==null) $('geoTxt').textContent='Set. Outdoor readings come from your area.';
 
-$('btnSunIn').onclick=()=>recordSun('in',new Date());
-$('btnSunOut').onclick=()=>recordSun('out',new Date());
+async function searchPlace(){
+  const q=$('placeSearch').value.trim();
+  if(!q) return;
+  $('placeResults').innerHTML='<p class="why">Searching…</p>';
+  try{
+    const r=await fetch('https://geocoding-api.open-meteo.com/v1/search?name='+encodeURIComponent(q)+'&count=5&language=en');
+    const j=await r.json();
+    if(!j.results||!j.results.length){ $('placeResults').innerHTML='<p class="why">Nothing found. Try a different spelling.</p>'; return; }
+    $('placeResults').innerHTML=j.results.map((it,i)=>{
+      const label=[it.name,it.admin1,it.country].filter(Boolean).join(', ');
+      return '<div class="row" style="cursor:pointer" data-i="'+i+'"><span>'+label+'</span><b>Use this</b></div>';
+    }).join('');
+    $('placeResults').querySelectorAll('[data-i]').forEach(el=>{
+      el.onclick=()=>{
+        const it=j.results[+el.dataset.i];
+        S.lat=+it.latitude.toFixed(4); S.lon=+it.longitude.toFixed(4);
+        store.set('lat',S.lat); store.set('lon',S.lon);
+        const label=[it.name,it.admin1,it.country].filter(Boolean).join(', ');
+        store.set('placeName',label); showPlace(label);
+        $('geoTxt').textContent='Set. Outdoor readings now come from your area.';
+        $('placeResults').innerHTML=''; $('placeSearch').value='';
+        fetchWeather().then(()=>tick(true));
+      };
+    });
+  }catch(e){ $('placeResults').innerHTML='<p class="why">Search failed. Try again.</p>'; }
+}
+$('btnPlaceSearch').onclick=searchPlace;
+$('placeSearch').addEventListener('keydown',e=>{ if(e.key==='Enter') searchPlace(); });
+if(S.lat!==null){
+  $('geoTxt').textContent='Set. Outdoor readings come from your area.';
+  const saved=store.get('placeName',null);
+  if(saved) showPlace(saved);
+}
 
 $('facing').value=String(S.facing);
 $('facing').onchange=e=>{ S.facing=+e.target.value; store.set('facing',S.facing); tick(true); };
@@ -1034,30 +1101,41 @@ $('btnMatch').onclick=()=>{
   S.pendingConfirm=false; log('Noted — window and shutters now match the advice.'); tick(true);
 };
 
-/* Record a sun event you noticed away from the laptop. The sun position is
-   recomputed for the time you give, so a late entry is just as accurate. */
+/* The obstruction is fixed in space; what moves is the sun. So we store the sun's
+   position at each stated time rather than the clock time itself, and re-solve it
+   for every future date. Times are read against today, and future times are fine —
+   the user is describing a pattern, not reporting an event that has happened. */
 function recordSun(which, when){
-  if(S.lat===null){ log('Set your location first.'); return; }
+  if(S.lat===null){ log('Set your location first.'); return false; }
   const p=solarPosition(when,S.lat,S.lon);
-  if(p.elevation<=0){ log('The sun was below the horizon at that time — not recorded.'); return; }
+  if(p.elevation<=0){ log('The sun is below the horizon at '+clock(when)+' — check that time.'); return false; }
   const arr=which==='in'?S.calIn:S.calOut;
   arr.push({az:p.azimuth,el:p.elevation,at:when.getTime()});
   if(arr.length>12) arr.shift();
   store.set(which==='in'?'calIn':'calOut',arr);
-  log('Recorded: sun '+(which==='in'?'reached':'left')+' the window at '+clock(when)+'.');
-  tick(true);
+  return true;
 }
-function manualWhen(){
-  const t=$('manTime').value;
-  if(!t){ log('Enter a time first.'); return null; }
-  const [h,m]=t.split(':').map(Number);
-  const d=new Date(); d.setDate(d.getDate()-(+$('manDay').value));
-  d.setHours(h,m,0,0);
-  if(d.getTime()>Date.now()){ log('That time has not happened yet.'); return null; }
+function timeToday(hhmm){
+  if(!hhmm) return null;
+  const [h,m]=hhmm.split(':').map(Number);
+  const d=new Date(); d.setHours(h,m,0,0);
   return d;
 }
-$('btnManIn').onclick=()=>{ const w=manualWhen(); if(w) recordSun('in',w); };
-$('btnManOut').onclick=()=>{ const w=manualWhen(); if(w) recordSun('out',w); };
+$('btnSunSave').onclick=()=>{
+  const a=timeToday($('sunFrom').value), b=timeToday($('sunTo').value);
+  if(!a||!b){ log('Enter both times before saving.'); return; }
+  if(b<=a){ log('The leaving time must be later than the arriving time.'); return; }
+  const okA=recordSun('in',a), okB=recordSun('out',b);
+  if(okA&&okB) log('Saved: direct sunlight from '+clock(a)+' to '+clock(b)+'.');
+  tick(true);
+};
+$('btnSunClear').onclick=()=>{
+  S.calIn=[]; S.calOut=[];
+  store.set('calIn',[]); store.set('calOut',[]);
+  $('sunFrom').value=''; $('sunTo').value='';
+  log('Sunlight observations cleared.');
+  tick(true);
+};
 
 /* sliders stage their values; Save applies them */
 const draft={db:S.deadband,dw:S.dwellMin,off:S.offset,qs:S.quietStart,qe:S.quietEnd};
